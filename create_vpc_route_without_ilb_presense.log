@@ -1,0 +1,133 @@
+
+2021-03-11 19:13:15 CST    download terraform binary
+
+2021-03-11 19:13:15 CST    downloading https://releases.hashicorp.com/terraform/0.12.13/terraform_0.12.13_darwin_amd64.zip
+
+2021-03-11 19:13:26 CST    downloading https://releases.hashicorp.com/terraform-provider-google/2.17.0/terraform-provider-google_2.17.0_darwin_amd64.zip
+
+2021-03-11 19:14:20 CST    downloading https://releases.hashicorp.com/terraform-provider-google-beta/2.17.0/terraform-provider-google-beta_2.17.0_darwin_amd64.zip
+
+2021-03-11 19:14:47 CST    downloading https://releases.hashicorp.com/terraform-provider-google/3.10.0/terraform-provider-google_3.10.0_darwin_amd64.zip
+
+2021-03-11 19:14:53 CST    terraform version
+Terraform v0.12.13
++ provider.google v3.10.0
+
+2021-03-11 19:14:55 CST    list terraform binary and providers
+total 443136
+-rwxr-xr-x  1 junxingmo  staff  55993832 Nov  1  2019 terraform
+-rwxr-xr-x  1 junxingmo  staff  57428176 Oct  9  2019 terraform-provider-google-beta_v2.17.0_x4
+-rwxr-xr-x  1 junxingmo  staff  55173776 Oct  9  2019 terraform-provider-google_v2.17.0_x4
+-rwxr-xr-x  1 junxingmo  staff  58281296 Feb 26  2020 terraform-provider-google_v3.10.0_x4
+Activated service account credentials for: [terraform@gke-eu-1.iam.gserviceaccount.com]
+
+2021-03-11 19:15:00 CST    clean up environment
+WARNING: The following filter keys were not present in any resource : name
+
+2021-03-11 19:15:02 CST    create a VPC
+Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/networks/vpc1].
+NAME  SUBNET_MODE  BGP_ROUTING_MODE  IPV4_RANGE  GATEWAY_IPV4
+vpc1  CUSTOM       REGIONAL
+
+Instances on this network will not be reachable until firewall rules
+are created. As an example, you can allow all internal traffic between
+instances as well as SSH, RDP, and ICMP by running:
+
+$ gcloud compute firewall-rules create <FIREWALL_NAME> --network vpc1 --allow tcp,udp,icmp --source-ranges <IP_RANGE>
+$ gcloud compute firewall-rules create <FIREWALL_NAME> --network vpc1 --allow tcp:22,tcp:3389,icmp
+
+
+2021-03-11 19:15:14 CST    create a subnet
+Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/subnetworks/vpc1-asia-east2].
+NAME             REGION      NETWORK  RANGE
+vpc1-asia-east2  asia-east2  vpc1     192.168.0.0/16
+
+2021-03-11 19:15:29 CST    list vpc and subnet
+NAME  SELF_LINK
+vpc1  https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/networks/vpc1
+NAME             SELF_LINK
+vpc1-asia-east2  https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/subnetworks/vpc1-asia-east2
+
+2021-03-11 19:15:33 CST    create heath-check, backend and forwarding rule
+Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/healthChecks/hc-tcp-9999].
+NAME         PROTOCOL
+hc-tcp-9999  TCP
+Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/backendServices/be-ilb].
+NAME    BACKENDS  PROTOCOL
+be-ilb            TCP
+Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/forwardingRules/fr-ilb-nat].
+
+2021-03-11 19:15:56 CST    clean up terraform dir
+
+2021-03-11 19:15:56 CST    prepare main.tf
+provider "google" {
+  alias  = "v3"
+  version = ">= 3.10.0"
+}
+
+resource "google_compute_route" "route-ilb" {
+  provider = google.v3
+
+  name         = "route-ilb"
+  dest_range   = "128.0.0.0/2"
+  network      = var.network_name
+  project      = var.project
+  next_hop_ilb = var.next_hop_ilb_url
+  priority     = 1000
+}
+
+2021-03-11 19:15:56 CST    prepare vars.tf
+variable "project" {
+  description = "project ID"
+  type        = string
+}
+
+variable "network_name" {
+  description = "vpc network name"
+  type        = string
+}
+
+variable "next_hop_ilb_url" {
+  description = "next hop ilb url"
+  type        = string
+}
+
+2021-03-11 19:15:56 CST    terraform init
+
+[0m[1mInitializing the backend...[0m
+
+[0m[1mInitializing provider plugins...[0m
+
+[0m[1m[32mTerraform has been successfully initialized![0m[32m[0m
+[0m[32m
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.[0m
+
+2021-03-11 19:15:56 CST    terraform apply
+[0m[1mgoogle_compute_route.route-ilb: Refreshing state... [id=projects/gke-eu-1/global/routes/route-ilb][0m
+[0m[1mgoogle_compute_route.route-ilb: Creating...[0m[0m
+[0m[1mgoogle_compute_route.route-ilb: Still creating... [10s elapsed][0m[0m
+[0m[1mgoogle_compute_route.route-ilb: Creation complete after 17s [id=projects/gke-eu-1/global/routes/route-ilb][0m[0m
+[0m[1m[32m
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.[0m
+
+2021-03-11 19:16:17 CST    list forwarding rule and vpc route
+NAME        REGION      IP_ADDRESS   IP_PROTOCOL  TARGET
+fr-ilb-nat  asia-east2  192.168.0.2  TCP          asia-east2/backendServices/be-ilb
+NAME                            NETWORK  DEST_RANGE      NEXT_HOP                  PRIORITY
+default-route-2176e079fb10167a  vpc1     192.168.0.0/16  vpc1                      0
+default-route-d8fc1f294b5e72bf  vpc1     0.0.0.0/0       default-internet-gateway  1000
+route-ilb                       vpc1     128.0.0.0/2     192.168.0.2               1000
+
+2021-03-11 19:16:22 CST    clean up environment
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/routes/route-ilb].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/forwardingRules/fr-ilb-nat].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/backendServices/be-ilb].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/healthChecks/hc-tcp-9999].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/subnetworks/vpc1-asia-east2].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/networks/vpc1].
