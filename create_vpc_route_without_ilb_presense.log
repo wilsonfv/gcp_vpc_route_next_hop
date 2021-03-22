@@ -1,30 +1,27 @@
 
-2021-03-11 19:13:15 CST    download terraform binary
+2021-03-22 15:37:29 CST    download terraform binary
 
-2021-03-11 19:13:15 CST    downloading https://releases.hashicorp.com/terraform/0.12.13/terraform_0.12.13_darwin_amd64.zip
+2021-03-22 15:37:29 CST    downloading https://releases.hashicorp.com/terraform/0.12.13/terraform_0.12.13_darwin_amd64.zip
 
-2021-03-11 19:13:26 CST    downloading https://releases.hashicorp.com/terraform-provider-google/2.17.0/terraform-provider-google_2.17.0_darwin_amd64.zip
+2021-03-22 15:37:38 CST    downloading https://releases.hashicorp.com/terraform-provider-google/2.17.0/terraform-provider-google_2.17.0_darwin_amd64.zip
 
-2021-03-11 19:14:20 CST    downloading https://releases.hashicorp.com/terraform-provider-google-beta/2.17.0/terraform-provider-google-beta_2.17.0_darwin_amd64.zip
+2021-03-22 15:37:49 CST    downloading https://releases.hashicorp.com/terraform-provider-google-beta/2.17.0/terraform-provider-google-beta_2.17.0_darwin_amd64.zip
 
-2021-03-11 19:14:47 CST    downloading https://releases.hashicorp.com/terraform-provider-google/3.10.0/terraform-provider-google_3.10.0_darwin_amd64.zip
-
-2021-03-11 19:14:53 CST    terraform version
+2021-03-22 15:37:58 CST    terraform version
 Terraform v0.12.13
-+ provider.google v3.10.0
++ provider.google-beta v2.17.0
 
-2021-03-11 19:14:55 CST    list terraform binary and providers
-total 443136
+2021-03-22 15:38:00 CST    list terraform binary and providers
+total 329304
 -rwxr-xr-x  1 junxingmo  staff  55993832 Nov  1  2019 terraform
 -rwxr-xr-x  1 junxingmo  staff  57428176 Oct  9  2019 terraform-provider-google-beta_v2.17.0_x4
 -rwxr-xr-x  1 junxingmo  staff  55173776 Oct  9  2019 terraform-provider-google_v2.17.0_x4
--rwxr-xr-x  1 junxingmo  staff  58281296 Feb 26  2020 terraform-provider-google_v3.10.0_x4
 Activated service account credentials for: [terraform@gke-eu-1.iam.gserviceaccount.com]
 
-2021-03-11 19:15:00 CST    clean up environment
+2021-03-22 15:38:06 CST    clean up environment
 WARNING: The following filter keys were not present in any resource : name
 
-2021-03-11 19:15:02 CST    create a VPC
+2021-03-22 15:38:08 CST    create a VPC
 Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/networks/vpc1].
 NAME  SUBNET_MODE  BGP_ROUTING_MODE  IPV4_RANGE  GATEWAY_IPV4
 vpc1  CUSTOM       REGIONAL
@@ -37,18 +34,18 @@ $ gcloud compute firewall-rules create <FIREWALL_NAME> --network vpc1 --allow tc
 $ gcloud compute firewall-rules create <FIREWALL_NAME> --network vpc1 --allow tcp:22,tcp:3389,icmp
 
 
-2021-03-11 19:15:14 CST    create a subnet
+2021-03-22 15:38:20 CST    create a subnet
 Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/subnetworks/vpc1-asia-east2].
 NAME             REGION      NETWORK  RANGE
 vpc1-asia-east2  asia-east2  vpc1     192.168.0.0/16
 
-2021-03-11 19:15:29 CST    list vpc and subnet
+2021-03-22 15:38:33 CST    list vpc and subnet
 NAME  SELF_LINK
 vpc1  https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/networks/vpc1
 NAME             SELF_LINK
 vpc1-asia-east2  https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/subnetworks/vpc1-asia-east2
 
-2021-03-11 19:15:33 CST    create heath-check, backend and forwarding rule
+2021-03-22 15:38:39 CST    create heath-check, backend and forwarding rule
 Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/healthChecks/hc-tcp-9999].
 NAME         PROTOCOL
 hc-tcp-9999  TCP
@@ -57,26 +54,43 @@ NAME    BACKENDS  PROTOCOL
 be-ilb            TCP
 Created [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/forwardingRules/fr-ilb-nat].
 
-2021-03-11 19:15:56 CST    clean up terraform dir
+2021-03-22 15:38:58 CST    clean up terraform dir
 
-2021-03-11 19:15:56 CST    prepare main.tf
-provider "google" {
-  alias  = "v3"
-  version = ">= 3.10.0"
+2021-03-22 15:38:58 CST    prepare main.tf
+locals {
+  routes = {
+    for route_name, route_config in var.routes:
+        route_name => merge({
+          "dest_range": null,
+          "tags": "",
+          "next_hop_gateway": null,
+          "next_hop_instance": null
+          "next_hop_ip": null,
+          "next_hop_ilb": null,
+          "priority": null
+        }, route_config)
+  }
 }
 
 resource "google_compute_route" "route-ilb" {
-  provider = google.v3
+  provider = "google-beta"
 
-  name         = "route-ilb"
-  dest_range   = "128.0.0.0/2"
+  for_each = local.routes
+
   network      = var.network_name
   project      = var.project
-  next_hop_ilb = var.next_hop_ilb_url
-  priority     = 1000
+
+  name         = each.key
+  dest_range   = each.value.dest_range
+  next_hop_gateway = each.value.next_hop_gateway
+  next_hop_instance = each.value.next_hop_instance
+  next_hop_ip = each.value.next_hop_ip
+  next_hop_ilb = each.value.next_hop_ilb
+  tags = each.value.next_hop_ilb == null ? [each.value.tags] : null
+  priority     = each.value.priority
 }
 
-2021-03-11 19:15:56 CST    prepare vars.tf
+2021-03-22 15:38:58 CST    prepare vars.tf
 variable "project" {
   description = "project ID"
   type        = string
@@ -87,16 +101,43 @@ variable "network_name" {
   type        = string
 }
 
-variable "next_hop_ilb_url" {
-  description = "next hop ilb url"
-  type        = string
+variable "routes" {
+  description = "routes specification"
+  type        = map(map(string))
 }
 
-2021-03-11 19:15:56 CST    terraform init
+2021-03-22 15:38:58 CST    prepare routes.auto.tfvars.json
+{
+  "routes": {
+    "route-ip": {
+      "dest_range": "10.0.0.0/8",
+      "tags": "t-route-ip",
+      "next_hop_ip": "192.168.0.15",
+      "priority": 2000
+    },
+    "route-ilb": {
+      "dest_range": "128.0.0.0/2",
+      "next_hop_ilb": "regions/asia-east2/forwardingRules/fr-ilb-nat",
+      "priority": 1500
+    }
+  }
+}
+
+2021-03-22 15:38:58 CST    terraform init
 
 [0m[1mInitializing the backend...[0m
 
 [0m[1mInitializing provider plugins...[0m
+
+The following providers do not have any version constraints in configuration,
+so the latest version was installed.
+
+To prevent automatic upgrades to new major versions that may contain breaking
+changes, it is recommended to add version = "..." constraints to the
+corresponding provider blocks in configuration, with the constraint strings
+suggested below.
+
+* provider.google-beta: version = "~> 2.17"
 
 [0m[1m[32mTerraform has been successfully initialized![0m[32m[0m
 [0m[32m
@@ -108,24 +149,32 @@ If you ever set or change modules or backend configuration for Terraform,
 rerun this command to reinitialize your working directory. If you forget, other
 commands will detect it and remind you to do so if necessary.[0m
 
-2021-03-11 19:15:56 CST    terraform apply
-[0m[1mgoogle_compute_route.route-ilb: Refreshing state... [id=projects/gke-eu-1/global/routes/route-ilb][0m
-[0m[1mgoogle_compute_route.route-ilb: Creating...[0m[0m
-[0m[1mgoogle_compute_route.route-ilb: Still creating... [10s elapsed][0m[0m
-[0m[1mgoogle_compute_route.route-ilb: Creation complete after 17s [id=projects/gke-eu-1/global/routes/route-ilb][0m[0m
+2021-03-22 15:38:58 CST    terraform apply
+[0m[1mgoogle_compute_route.route-ilb["route-ilb"]: Refreshing state... [id=route-ilb][0m
+[0m[1mgoogle_compute_route.route-ilb["route-ip"]: Refreshing state... [id=route-ip][0m
+[0m[1mgoogle_compute_route.route-ilb["route-ilb"]: Creating...[0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ip"]: Creating...[0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ip"]: Still creating... [10s elapsed][0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ilb"]: Still creating... [10s elapsed][0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ip"]: Still creating... [20s elapsed][0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ilb"]: Still creating... [20s elapsed][0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ilb"]: Creation complete after 27s [id=route-ilb][0m[0m
+[0m[1mgoogle_compute_route.route-ilb["route-ip"]: Creation complete after 28s [id=route-ip][0m[0m
 [0m[1m[32m
-Apply complete! Resources: 1 added, 0 changed, 0 destroyed.[0m
+Apply complete! Resources: 2 added, 0 changed, 0 destroyed.[0m
 
-2021-03-11 19:16:17 CST    list forwarding rule and vpc route
+2021-03-22 15:39:30 CST    list forwarding rule and vpc route
 NAME        REGION      IP_ADDRESS   IP_PROTOCOL  TARGET
 fr-ilb-nat  asia-east2  192.168.0.2  TCP          asia-east2/backendServices/be-ilb
 NAME                            NETWORK  DEST_RANGE      NEXT_HOP                  PRIORITY
-default-route-2176e079fb10167a  vpc1     192.168.0.0/16  vpc1                      0
-default-route-d8fc1f294b5e72bf  vpc1     0.0.0.0/0       default-internet-gateway  1000
-route-ilb                       vpc1     128.0.0.0/2     192.168.0.2               1000
+default-route-10885697104af6df  vpc1     192.168.0.0/16  vpc1                      0
+default-route-348cd34c17102dda  vpc1     0.0.0.0/0       default-internet-gateway  1000
+route-ilb                       vpc1     128.0.0.0/2     192.168.0.2               1500
+route-ip                        vpc1     10.0.0.0/8      192.168.0.15              2000
 
-2021-03-11 19:16:22 CST    clean up environment
+2021-03-22 15:39:34 CST    clean up environment
 Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/routes/route-ilb].
+Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/global/routes/route-ip].
 Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/forwardingRules/fr-ilb-nat].
 Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/backendServices/be-ilb].
 Deleted [https://www.googleapis.com/compute/v1/projects/gke-eu-1/regions/asia-east2/healthChecks/hc-tcp-9999].

@@ -6,3 +6,4 @@ tf_binary
 *.tfstate.backup
 *.tf
 *.tfstate.lock.info
+*.auto.tfvars.json

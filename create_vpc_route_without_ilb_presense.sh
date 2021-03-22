@@ -11,9 +11,12 @@ function tidy_up() {
                         --format="value(NAME)" \
                         --filter="name=(${VPC_NAME_1})")
     do
-        if [[ $(gcloud compute routes list --filter="name=${ROUTE_NAME}") ]]; then
-            gcloud compute routes delete ${ROUTE_NAME} -q
-        fi
+        for ROUTE in $(gcloud compute routes list \
+                        --filter='name!~default-route*' \
+                        --format="csv(NAME)[no-heading]")
+        do
+            gcloud compute routes delete ${ROUTE} -q
+        done
 
         if [[ $( gcloud compute health-checks list --project=${GCP_PROJECT_ID} --filter="NAME=hc-tcp-9999" ) ]]; then
             gcloud compute forwarding-rules delete ${FR_NAME} --region=${GCP_REGION} --project=${GCP_PROJECT_ID} -q
@@ -69,7 +72,6 @@ mkdir -p ${TF_BINARY_DIR}
 get_tf_binary ${TF_BINARY_DIR} terraform                        0.12.13 darwin_amd64
 get_tf_binary ${TF_BINARY_DIR} terraform-provider-google        2.17.0 darwin_amd64
 get_tf_binary ${TF_BINARY_DIR} terraform-provider-google-beta   2.17.0 darwin_amd64
-get_tf_binary ${TF_BINARY_DIR} terraform-provider-google        3.10.0 darwin_amd64
 
 log "terraform version"
 ${TF_BINARY_DIR}/terraform version
@@ -142,20 +144,37 @@ fi
 
 log "prepare main.tf"
 cat >${SCRIPT_DIR}/main.tf<<EOF
-provider "google" {
-  alias  = "v3"
-  version = ">= 3.10.0"
+locals {
+  routes = {
+    for route_name, route_config in var.routes:
+        route_name => merge({
+          "dest_range": null,
+          "tags": "",
+          "next_hop_gateway": null,
+          "next_hop_instance": null
+          "next_hop_ip": null,
+          "next_hop_ilb": null,
+          "priority": null
+        }, route_config)
+  }
 }
 
-resource "google_compute_route" "${ROUTE_NAME}" {
-  provider = google.v3
+resource "google_compute_route" "route-ilb" {
+  provider = "google-beta"
 
-  name         = "${ROUTE_NAME}"
-  dest_range   = "128.0.0.0/2"
+  for_each = local.routes
+
   network      = var.network_name
   project      = var.project
-  next_hop_ilb = var.next_hop_ilb_url
-  priority     = 1000
+
+  name         = each.key
+  dest_range   = each.value.dest_range
+  next_hop_gateway = each.value.next_hop_gateway
+  next_hop_instance = each.value.next_hop_instance
+  next_hop_ip = each.value.next_hop_ip
+  next_hop_ilb = each.value.next_hop_ilb
+  tags = each.value.next_hop_ilb == null ? [each.value.tags] : null
+  priority     = each.value.priority
 }
 EOF
 cat ${SCRIPT_DIR}/main.tf
@@ -172,12 +191,32 @@ variable "network_name" {
   type        = string
 }
 
-variable "next_hop_ilb_url" {
-  description = "next hop ilb url"
-  type        = string
+variable "routes" {
+  description = "routes specification"
+  type        = map(map(string))
 }
 EOF
 cat ${SCRIPT_DIR}/vars.tf
+
+log "prepare routes.auto.tfvars.json"
+cat >${SCRIPT_DIR}/routes.auto.tfvars.json<<EOF
+{
+  "routes": {
+    "route-ip": {
+      "dest_range": "10.0.0.0/8",
+      "tags": "t-route-ip",
+      "next_hop_ip": "192.168.0.15",
+      "priority": 2000
+    },
+    "route-ilb": {
+      "dest_range": "128.0.0.0/2",
+      "next_hop_ilb": "${NEXT_HOP_ILB_URL}",
+      "priority": 1500
+    }
+  }
+}
+EOF
+cat ${SCRIPT_DIR}/routes.auto.tfvars.json
 
 log "terraform init"
 ${TF_BINARY_DIR}/terraform init ${SCRIPT_DIR}
@@ -186,7 +225,6 @@ log "terraform apply"
 ${TF_BINARY_DIR}/terraform apply \
     -var="project=${GCP_PROJECT_ID}" \
     -var="network_name=${VPC_NAME_1}" \
-    -var="next_hop_ilb_url=${NEXT_HOP_ILB_URL}" \
     -auto-approve \
     ${SCRIPT_DIR}
 
